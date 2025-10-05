@@ -21,9 +21,9 @@ args = "Upbit Monitor"
 name = "Upbit Monitor"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "go run main.go"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PROXY_URL=http://45.131.4.253:80 go run main.go"
