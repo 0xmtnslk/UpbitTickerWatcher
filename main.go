@@ -6,6 +6,7 @@ import (
         "io"
         "log"
         "net/http"
+        "net/url"
         "os"
         "regexp"
         "sync"
@@ -40,10 +41,13 @@ var (
         tickerRegex     = regexp.MustCompile(`\(([A-Z0-9]+)\)`)
         koreanPattern   = regexp.MustCompile(`신규\s*거래지원\s*안내`)
         englishPattern  = regexp.MustCompile(`Market Support for`)
+        httpClient      *http.Client
 )
 
 func main() {
         log.Println("Upbit API Monitor başlatılıyor...")
+        
+        initHTTPClient()
         
         if err := loadExistingListings(); err != nil {
                 log.Printf("Mevcut kayıtlar yüklenirken hata: %v\n", err)
@@ -56,6 +60,35 @@ func main() {
         
         for range ticker.C {
                 checkAnnouncements()
+        }
+}
+
+func initHTTPClient() {
+        transport := &http.Transport{
+                MaxIdleConns:        10,
+                IdleConnTimeout:     30 * time.Second,
+                DisableCompression:  false,
+        }
+
+        proxyURL := os.Getenv("PROXY_URL")
+        if proxyURL != "" {
+                parsedProxy, err := url.Parse(proxyURL)
+                if err != nil {
+                        log.Printf("⚠️  Proxy URL parse hatası: %v\n", err)
+                        log.Println("Proxy olmadan devam ediliyor...")
+                } else {
+                        transport.Proxy = http.ProxyURL(parsedProxy)
+                        log.Printf("✅ Proxy kullanılıyor: %s\n", parsedProxy.Host)
+                }
+        } else {
+                log.Println("ℹ️  Proxy ayarlanmadı. Direkt bağlantı kullanılıyor.")
+                log.Println("   Proxy kullanmak için PROXY_URL environment variable'ını ayarlayın.")
+                log.Println("   Örnek: PROXY_URL=http://username:password@proxy.example.com:8080")
+        }
+
+        httpClient = &http.Client{
+                Timeout:   10 * time.Second,
+                Transport: transport,
         }
 }
 
@@ -93,7 +126,6 @@ func getSymbolList() []string {
 }
 
 func checkAnnouncements() {
-        client := &http.Client{Timeout: 10 * time.Second}
         req, err := http.NewRequest("GET", "https://api-manager.upbit.com/api/v1/announcements?os=web&page=1&per_page=20&category=all", nil)
         if err != nil {
                 log.Printf("İstek oluşturma hatası: %v\n", err)
@@ -104,7 +136,7 @@ func checkAnnouncements() {
         req.Header.Set("Referer", "https://upbit.com")
         req.Header.Set("Accept", "application/json")
 
-        resp, err := client.Do(req)
+        resp, err := httpClient.Do(req)
         if err != nil {
                 log.Printf("API isteği hatası: %v\n", err)
                 return
